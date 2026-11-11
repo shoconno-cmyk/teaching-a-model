@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Teaching a Model My Judgment</title>
+<meta name="description" content="I tuned a screenplay-tagging prompt until Claude Fable 5.2 matched my calls on 8 of 12 hard beats. On 12 beats it had never seen, it matched 5. What a hold-out set showed.">
+<meta property="og:title" content="Teaching a Model My Judgment: What a Hold-Out Set Showed">
+<meta property="og:description" content="Prompt fixes won the tuning set and traded errors on unseen beats. Why a hold-out set matters.">
+<style>
+:root { --bg:#F6F4EF; --surface:#FFFFFF; --ink:#1B1B1F; --quiet:#6B6B74; --rule:#E2DED4; --muted:#B9B6AD; --accent:#2F6FE4; }
+@media (prefers-color-scheme: dark) { :root { --bg:#141417; --surface:#1C1C21; --ink:#ECEAE5; --quiet:#9C9AA3; --rule:#2E2E35; --muted:#55545B; --accent:#6A9BFF; } }
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin:0; background:var(--bg); color:var(--ink); font:17px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif; }
+main { max-width:720px; margin:0 auto; padding:48px 16px 80px; }
+header .kicker { color:var(--quiet); font-size:14px; letter-spacing:.02em; margin:0 0 12px; }
+h1 { font-size:clamp(32px,7vw,46px); line-height:1.08; letter-spacing:-.02em; margin:0 0 16px; }
+header .byline { color:var(--quiet); font-size:14px; margin:0 0 32px; padding-bottom:24px; border-bottom:1px solid var(--rule); }
+h2 { font-size:26px; line-height:1.2; letter-spacing:-.01em; margin:56px 0 12px; }
+p, li { margin:0 0 14px; }
+a { color:var(--accent); text-underline-offset:2px; }
+ul, ol { padding-left:22px; }
+table { width:100%; border-collapse:collapse; font-size:14.5px; margin:20px 0 24px; display:block; overflow-x:auto; }
+th, td { text-align:left; vertical-align:top; padding:9px 10px; border-bottom:1px solid var(--rule); }
+th { color:var(--quiet); font-weight:600; font-size:12.5px; text-transform:uppercase; letter-spacing:.04em; }
+td:first-child { color:var(--quiet); font-variant-numeric:tabular-nums; }
+.chart { margin:28px 0; padding:20px 16px 14px; background:var(--surface); border:1px solid var(--rule); border-radius:12px; }
+.chart svg { width:100%; height:auto; display:block; }
+.chart figcaption { color:var(--quiet); font-size:13px; margin-top:10px; line-height:1.45; }
+footer { margin-top:56px; padding-top:20px; border-top:1px solid var(--rule); color:var(--quiet); font-size:13px; }
+@media print { .pdf-link { display:none; } body { background:#fff; font-size:12pt; } main { padding:0 8px; } .chart { border:none; padding:0; } h2, table, tr, .chart { break-inside:avoid; } h2 { break-after:avoid; } }
+</style>
+</head>
+<body>
+<main>
+<header>
+  <p class="kicker">Numen, a screenplay-tagging prototype · Notes from a model re-test</p>
+  <h1>Teaching a Model My Judgment: What a Hold-Out Set Showed</h1>
+  <p class="byline">Shane O'Connor · 11 November 2026<span class="pdf-link"> · <a href="teaching_a_model.pdf" download>Download PDF</a></span></p>
+</header>
+<article>
+<h2>Summary</h2>
+<p>A major goal of Numen is to tag screenplays accurately and independently without human review. Currently, on the hardest calls in a screenplay, Numen's default model -- Sonnet 5 -- still got a lot wrong. However, with the release of Anthropic's newest model, and arguably the most powerful in their fleet, Fable 5.2, I wanted to know where that independent call gap lived. If a stronger model can close it, the road to a more reliable product was just waiting for the right model. If the gap remains, the problem is in the prompting.</p>
+<p>Turns out it's mostly the prompt. Out of the box, Fable 5.2 did no better than Sonnet 5, and most of its misses traced back to gaps in my instructions. So I rewrote the prompt until Fable matched human judgement on 8 of 12 hard calls, up from 2. Then I tested it on 12 fresh calls it had never seen. It matched human judgement 5 times. Sonnet 5, with the old prompt, matched 6 times.</p>
+<p>The fixes worked on the beats they were written for. On fresh beats they swapped one kind of error for another: the model stopped seeing dark archetypes that weren't there and started missing warm ones that were. Accuracy essentially stayed flat.</p>
+<p>The results are useful. Teaching human judgment to a model one exception at a time looks like progress on the examples you are fixing. Only a hold-out set shows whether you actually taught it a ground truth principle or just a list of answers.</p>
+<h2>The project</h2>
+<p>Numen is a prototype that reads a screenplay and tags what each character is doing, beat by beat, in the language of Jungian archetypes. I use six plus a Greek dramaturgical device, which together I call the Big Seven: Persona, Shadow, Trickster, Hero, Mentor, Great Mother and Chorus. The aim is to provide a tool a story development team can trust, on a cold script no human has hand-checked.</p>
+<p>Not every beat in a script earns an archetype, of course, so the model can also answer with non-tags:</p>
+<ul>
+<li><strong>ordinary_reaction</strong>: the behaviour is clear, but it's just a person reacting.</li>
+<li><strong>functional_role_only</strong>: the character is there to do a job, such as a priest reading a eulogy.</li>
+<li><strong>no_confident_archetype</strong>: the text is too thin to judge.</li>
+</ul>
+<p>A non-tag is a real answer, not a failure. A lot of what characters do on-screen is ordinary, and a tool that finds a Hero in every beat is useless.</p>
+<p>The test script is <em>Full of Grace</em>. It contains 460 beats and 654 character entries. Claude Sonnet 5 tagged all of it cold, and a human (myself) reviewed every one of those calls. Of its 82 real archetype tags, 57 survived review exactly (69.5%).</p>
+<h2>The test</h2>
+<p>When Claude Fable 5.2 came out, I gave it 12 of the hardest calls in the <em>Full of Grace</em> script. On 8 of the 12, my review had overturned Sonnet's call. On the other 4, I had confirmed Sonnet's.</p>
+<p>Then I tested Fable 5.2. Each of the 12 beats went into a fresh, incognito chat with Fable 5.2 set at High effort, with the same prompt Sonnet had seen. Fable saw only the beat, never my verdict.</p>
+<p>On the first run, Fable matched me on 2 of 12, plus 2 near misses. Sonnet's original performance matched on 4.</p>
+<p>The misses had a pattern. Fable almost never used an archetype, and it never once answered ordinary_reaction. When I checked, neither had Sonnet: 0 of 654 entries in the cold run, against 19 after my review. <strong><u>The reason was in the prompt, not the models.</u></strong> Its answer format never listed ordinary_reaction as an option.</p>
+<h2>Fixing the prompt</h2>
+<p>Over five rounds of prompt repairs, Fable went from 2 matches to 8 on the 12 beats.</p>
+<p>The first fix added ordinary_reaction to the answer format, with one line telling it apart from no_confident_archetype. That fixed two beats straight away.</p>
+<p>The bigger problem was that my judgment lived in my review notes, not the prompt. Over several months of review I had written down where each archetype's line really sits. None of that had reached the model. I turned seven of those rulings into prompt text:</p>
+<ol>
+<li><strong>Hero:</strong> words can count as the act when they protect someone in the moment and cost the speaker something.</li>
+<li><strong>Shadow:</strong> a character owns what they do unless the text shows otherwise.</li>
+<li><strong>Chorus:</strong> naming a limit you have no power to enforce counts, even from an insider.</li>
+<li><strong>Trickster:</strong> the mark is unaware while the trick is set up and sprung, and timing can be the trick.</li>
+<li><strong>Mentor:</strong> guidance can carry on across cuts, and the mentee can be in an earlier beat.</li>
+<li><strong>Trickster:</strong> the trick has to actually work; planning is intent.</li>
+<li><strong>Trickster:</strong> rehearsing a false name is preparation, not the trick.</li>
+</ol>
+<table>
+<thead>
+<tr>
+<th>Beat</th>
+<th>Character</th>
+<th>My verdict</th>
+<th>Fable, first run</th>
+<th>Fable, last run</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>T01</td>
+<td>SARGE</td>
+<td>ordinary_reaction</td>
+<td>no_confident_archetype</td>
+<td>match</td>
+</tr>
+<tr>
+<td>T02</td>
+<td>HOLLY</td>
+<td>Trickster</td>
+<td>no_confident_archetype</td>
+<td>match</td>
+</tr>
+<tr>
+<td>T03</td>
+<td>MACKIE</td>
+<td>Shadow</td>
+<td>Great Mother</td>
+<td>Great Mother</td>
+</tr>
+<tr>
+<td>T04</td>
+<td>DOUG</td>
+<td>Chorus</td>
+<td>no_confident_archetype</td>
+<td>match</td>
+</tr>
+<tr>
+<td>T05</td>
+<td>CHEYENNE</td>
+<td>Persona</td>
+<td>no_confident_archetype</td>
+<td>no_confident_archetype</td>
+</tr>
+<tr>
+<td>T06</td>
+<td>PETE</td>
+<td>consistent (arc check)</td>
+<td>match</td>
+<td>match</td>
+</tr>
+<tr>
+<td>T07</td>
+<td>JOHN</td>
+<td>ordinary_reaction</td>
+<td>no_confident_archetype</td>
+<td>match</td>
+</tr>
+<tr>
+<td>T08</td>
+<td>YOUNG JOHN</td>
+<td>Hero</td>
+<td>no_confident_archetype</td>
+<td>match</td>
+</tr>
+<tr>
+<td>T09</td>
+<td>TRUDY</td>
+<td>ordinary_reaction</td>
+<td>Shadow</td>
+<td>Trickster</td>
+</tr>
+<tr>
+<td>T10</td>
+<td>ANGIE</td>
+<td>Mentor</td>
+<td>no_confident_archetype</td>
+<td>match</td>
+</tr>
+<tr>
+<td>T11</td>
+<td>DR. SHEPHARD</td>
+<td>Great Mother</td>
+<td>match</td>
+<td>match</td>
+</tr>
+<tr>
+<td>T12</td>
+<td>JOHN</td>
+<td>ordinary_reaction</td>
+<td>Hero</td>
+<td>Hero</td>
+</tr>
+</tbody>
+</table>
+<p>The four that never landed each say something different:</p>
+<ul>
+<li><strong>MACKIE</strong> sits on a boundary I haven't settled myself: a parent's dark side versus the character's own. I parked it.</li>
+<li><strong>CHEYENNE</strong> matched in one round and missed in another with no relevant change, so this is noise from the model.</li>
+<li><strong>TRUDY</strong> led to rule 6, which was never re-run on her beat.</li>
+<li><strong>JOHN (T12)</strong> came right only when I pasted in the staging from five beats earlier. The pipeline passes on just the previous beat's last line, so the model can't see that the rifle is already lowered.</li>
+</ul>
+<h2>The hold-out</h2>
+<p>Fable, on 12 never-before-seen beats, matched me 5 times. Sonnet matched me 6 times. The fixes traded errors rather than removing them.</p>
+<figure class="chart"><svg viewBox="0 0 760 332" role="img" aria-label="Tuning took Fable from 2 to 8 matches. On new beats it scored 5, Sonnet 6." font-size="13" font-family="inherit"><text x="16" y="30" font-size="16" font-weight="600" fill="var(--ink)">Tuning took Fable from 2 to 8 matches. On new beats it scored 5, Sonnet 6.</text><text x="16" y="54" fill="var(--quiet)">Calls matching my review, out of 12</text><line x1="230" x2="230" y1="76" y2="322" stroke="var(--quiet)" stroke-opacity=".5"/><line x1="670" x2="670" y1="76" y2="322" stroke="var(--rule)" stroke-dasharray="3 3"/><text x="676" y="86" fill="var(--quiet)" font-size="12">all 12</text><text x="16" y="96" font-weight="600" fill="var(--ink)">The 12 beats I tuned on</text><text x="220" y="129" text-anchor="end" fill="var(--quiet)">Sonnet 5, original prompt</text><rect x="230" y="114" width="146.7" height="22" rx="2" fill="var(--muted)"><title>The 12 beats I tuned on, Sonnet 5, original prompt: 4 of 12</title></rect><text x="384.7" y="129" fill="var(--ink)">4</text><text x="220" y="163" text-anchor="end" fill="var(--quiet)">Fable 5.2, first run</text><rect x="230" y="148" width="73.3" height="22" rx="2" fill="var(--accent)" fill-opacity="0.4"><title>The 12 beats I tuned on, Fable 5.2, first run: 2 of 12</title></rect><text x="311.3" y="163" fill="var(--ink)">2</text><text x="220" y="197" text-anchor="end" fill="var(--quiet)">Fable 5.2, final prompt</text><rect x="230" y="182" width="293.3" height="22" rx="2" fill="var(--accent)"><title>The 12 beats I tuned on, Fable 5.2, final prompt: 8 of 12</title></rect><text x="531.3" y="197" fill="var(--ink)">8</text><text x="16" y="242" font-weight="600" fill="var(--ink)">12 held-out beats</text><text x="220" y="275" text-anchor="end" fill="var(--quiet)">Sonnet 5, original prompt</text><rect x="230" y="260" width="220.0" height="22" rx="2" fill="var(--muted)"><title>12 held-out beats, Sonnet 5, original prompt: 6 of 12</title></rect><text x="458.0" y="275" fill="var(--ink)">6</text><text x="220" y="309" text-anchor="end" fill="var(--quiet)">Fable 5.2, final prompt</text><rect x="230" y="294" width="183.3" height="22" rx="2" fill="var(--accent)"><title>12 held-out beats, Fable 5.2, final prompt: 5 of 12</title></rect><text x="421.3" y="309" fill="var(--ink)">5</text></svg><figcaption>Fable 5.2 at High effort, one run per beat, scored against my review · <em>Full of Grace</em> · November 2026</figcaption></figure>
+<p>I drew the hold-out at random with a fixed seed, before running anything. I left out every scene the tuning beats came from, plus the scenes either side, so no fix could have been written with these beats in view. Half the picks are calls I had overturned and half are calls I had confirmed. Three files were sent twice, unmarked, to check run-to-run noise.</p>
+<table>
+<thead>
+<tr>
+<th>Beat</th>
+<th>Character</th>
+<th>My verdict</th>
+<th>Sonnet 5</th>
+<th>Fable 5.2</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>01</td>
+<td>JOHN</td>
+<td>ordinary_reaction</td>
+<td>Shadow</td>
+<td>match</td>
+</tr>
+<tr>
+<td>03</td>
+<td>CHEYENNE</td>
+<td>ordinary_reaction</td>
+<td>Persona</td>
+<td>match</td>
+</tr>
+<tr>
+<td>06</td>
+<td>REGGIE</td>
+<td>ordinary_reaction</td>
+<td>Chorus</td>
+<td>Chorus</td>
+</tr>
+<tr>
+<td>07</td>
+<td>TRUDY</td>
+<td>ordinary_reaction</td>
+<td>Great Mother</td>
+<td>no_confident_archetype</td>
+</tr>
+<tr>
+<td>08</td>
+<td>PRIEST</td>
+<td>functional_role_only</td>
+<td>Chorus</td>
+<td>Chorus</td>
+</tr>
+<tr>
+<td>10</td>
+<td>O'SHEA</td>
+<td>ordinary_reaction</td>
+<td>no_confident_archetype</td>
+<td>match</td>
+</tr>
+<tr>
+<td>02</td>
+<td>TRUDY</td>
+<td>Great Mother</td>
+<td>match</td>
+<td>match</td>
+</tr>
+<tr>
+<td>04</td>
+<td>REGGIE</td>
+<td>Great Mother</td>
+<td>match</td>
+<td>ordinary_reaction</td>
+</tr>
+<tr>
+<td>05</td>
+<td>MARCHAND</td>
+<td>Chorus</td>
+<td>match</td>
+<td>ordinary_reaction</td>
+</tr>
+<tr>
+<td>09</td>
+<td>O'SHEA</td>
+<td>Great Mother</td>
+<td>match</td>
+<td>ordinary_reaction</td>
+</tr>
+<tr>
+<td>11</td>
+<td>JOHN</td>
+<td>Great Mother, not Hero</td>
+<td>match</td>
+<td>Great Mother + Hero</td>
+</tr>
+<tr>
+<td>12</td>
+<td>LATINO KID</td>
+<td>Trickster</td>
+<td>match</td>
+<td>match</td>
+</tr>
+</tbody>
+</table>
+<p>The first six are calls I overturned, so Sonnet misses all of them by definition. The last six are calls I confirmed, so it matches all of them. The fair questions are whether Fable fixes Sonnet's errors (3 of 6) and keeps its right calls (2 of 6, plus one partial).</p>
+<p><strong>What the fixes cured.</strong> Sonnet's false alarms are gone. Fable no longer reads an interrogation tactic as Shadow, or a flat denial as Persona. It also uses ordinary_reaction where it belongs.</p>
+<p><strong>What they broke.</strong> Three warm calls I had confirmed became ordinary_reaction. Fable's reason on Reggie's offer of help: "sincere on the page but only declared; no care is enacted ... so it is not Great Mother." That is the Hero rule, that intent isn't action, spreading to an archetype it was never written for: the Great Mother definition includes "offering unconditional support", which is what Reggie does. Nor is declared care the whole story. O'Shea walking Cheyenne home is care acted out, and Fable read it as just following John's instruction.</p>
+<p><strong>What was never fixed.</strong> The line between Chorus and politeness is still only in my head. Fable gave Chorus to Reggie's "your father would've appreciated this" but not to the Captain's "Your father would be very proud of you, John." I made the opposite call on both. The pipeline also split the Captain's line in two, so the model saw its second half as stage directions. It also tagged a priest's eulogy as Chorus, which the definition's wording invites.</p>
+<p><strong>Stability was good.</strong> All three repeated files came back with the same call for every character. Where I could check, the misses came from the prompt, not chance.</p>
+<h2>What it means for a product</h2>
+<p>A tagging tool has to work unsupervised, on scripts nobody has reviewed. A prompt tuned beat by beat on one script can't promise that, and this test shows why.</p>
+<p>Each of my fixes was a ruling on a specific case. The model learned each ruling, then applied it too widely (overfitting). The Hero rule against counting intent as action made it doubt the Great Mother. The boundaries I never wrote down, it guessed at.</p>
+<p>What I would do next:</p>
+<ol>
+<li><strong>Write principles, not exceptions.</strong> State each boundary once, as a general test: when warmth counts as care rather than politeness, and when a remark is a verdict rather than manners.</li>
+<li><strong>Give the model the context a reader has.</strong> That means a short character sheet, the staging so far in the scene, and the cue marks the parser currently drops.</li>
+<li><strong>Test every change on a fresh hold-out.</strong> Draw it before writing the change, and never tune on it.</li>
+<li><strong>Run each beat more than once.</strong> One run per beat can't tell a boundary problem from a coin flip.</li>
+</ol>
+<p>The hold-out cost an evening and a few chat messages. Without it, I'd have reported a prompt that went from 2 to 8 out of 12, and believed it was better.</p>
+<h2>Method and limits</h2>
+<ul>
+<li><strong>Small samples.</strong> There were 12 tuning beats and 12 hold-out beats, with one run each, apart from the three repeats. A one-beat gap, like 5 against 6, means nothing on its own. The pattern of which calls moved is the finding.</li>
+<li><strong>One reviewer.</strong> Every verdict is my verdict. I reviewed Sonnet's calls, so the confirmed beats lean toward what Sonnet said.</li>
+<li><strong>Hardest cases.</strong> The tuning beats were chosen because they were hard. Neither score compares with the 69.5% from the full cold run.</li>
+<li><strong>Chat, not the API.</strong> Fable ran in Claude chat at High effort, with the system prompt and the beat in one attached file. Sonnet's original calls came through the pipeline's API harness.</li>
+<li><strong>Blind and independent.</strong> Fable never saw a verdict, every file ran in a fresh incognito chat, and hold-out files carried only a number. Three pairs of hold-out beats come from the same scene, so they aren't fully independent material.</li>
+<li><strong>Checked against the source.</strong> Every script line quoted here was checked against the screenplay text, and all results, prompts and answer keys are kept in the project repository.</li>
+</ul>
+</article>
+<footer>Model calls by Claude Sonnet 5 and Claude Fable 5.2; human verdicts, analysis and write-up by Shane O'Connor with Claude.</footer>
+</main>
+</body>
+</html>
